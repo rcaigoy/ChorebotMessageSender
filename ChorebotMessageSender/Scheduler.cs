@@ -49,7 +49,7 @@ namespace ChorebotMessageSender
             this.ScheduleTimer.AutoReset = true;
 
             //initialize sender interval
-            SenderInterval = new TimeSpan(24, 10, 0);
+            SenderInterval = new TimeSpan(0, 1, 0);
 
             //wait one minute before processing calls after schedule initially starts
             Thread.Sleep((int)SenderInterval.TotalMilliseconds);
@@ -269,24 +269,43 @@ namespace ChorebotMessageSender
             {
                 using (var db = new ChorebotSchedulerContext())
                 {
-                    var call = db.Calls.FirstOrDefault(x => x.CallId == ScheduledTask.CallId);
+                    var Call = db.Calls.FirstOrDefault(x => x.CallId == ScheduledTask.CallId);
+
+                    string UrlRequest = Call.Url;
+
+                    var QueryStringsQuery = db.QueryStrings.Where(x => x.CallId == Call.CallId && x.IsActive);
+
+                    if (QueryStringsQuery != null && QueryStringsQuery.Count() > 0)
+                    {
+                        var QueryStringList = QueryStringsQuery.ToList();
+                        UrlRequest += "?";
+
+                        //get first
+                        UrlRequest += QueryStringList[0].KeyString + "=" + QueryStringList[0].ValueString;
+
+                        for (int i = 1; i < QueryStringList.Count; i++)
+                        {
+                            UrlRequest += "&";
+                            UrlRequest += QueryStringList[i] + "=" + QueryStringList[i].ValueString;
+                        }
+                    }
 
                     var client = new HttpClient();
-                    client.BaseAddress = new Uri(call.Url);
+                    client.BaseAddress = new Uri(UrlRequest);
 
                     //Task<HttpResponseMessage> response = null;
                     HttpResponseMessage response = null;
 
-                    switch (call.CallType)
+                    switch (Call.CallType)
                     {
                         case "get":
-                            Console.WriteLine("Starting:  " + call.CallId);
+                            Console.WriteLine("Starting:  " + Call.Url);
                             Task.Run(async () =>
                             {
-                            response = await client.GetAsync(call.Url);
+                            response = await client.GetAsync(UrlRequest);
                                 if (response == null)
                                 {
-                                    AlertAdmin("null response", new Exception(call.Url));
+                                    AlertAdmin("null response", new Exception(Call.Url));
                                 }
                                 else if (response.StatusCode != HttpStatusCode.OK)
                                 {
@@ -301,13 +320,13 @@ namespace ChorebotMessageSender
                             break;
 
                         case "post":
-                            Console.WriteLine("Starting:  " + call.CallId);
+                            Console.WriteLine("Starting:  " + Call.Url);
                             Task.Run(async () =>
                             {
-                                response = await client.PostAsync(call.Url, null);
+                                response = await client.PostAsync(UrlRequest, null);
                                 if (response == null)
                                 {
-                                    AlertAdmin("null response", new Exception(call.Url));
+                                    AlertAdmin("null response", new Exception(Call.Url));
                                 }
                                 else if (response.StatusCode != HttpStatusCode.OK)
                                 {
@@ -344,15 +363,17 @@ namespace ChorebotMessageSender
                         Thread.Sleep(1000);
                         Console.WriteLine("Db in use " + DateTime.Now);
                     }
-                    Console.WriteLine("Completing Scheduled Task " + DateTime.Now);
                     this.DBInUse = true;
                     var ScheduledTask = db.ScheduledTasks.FirstOrDefault(x => x.ScheduledTaskId == ScheduledTaskId);
                     ScheduledTask.IsSent = true;
+                    ScheduledTask.DateSent = DateTime.Now;
                     db.SaveChanges();
 
-                    this.DBInUse = false;
+                    var Call = db.Calls.FirstOrDefault(x => x.CallId == ScheduledTask.CallId);
 
-                    Console.WriteLine("Completed " + ScheduledTaskId);
+                    Console.WriteLine("Completed Scheduled Task " + ScheduledTaskId + ":  " +  Call.Url);
+
+                    this.DBInUse = false;
                 }
             }
             catch (Exception ex)

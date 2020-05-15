@@ -17,6 +17,7 @@ namespace ChorebotMessageSender.Entities
 
         public virtual DbSet<Calls> Calls { get; set; }
         public virtual DbSet<IntervalTypes> IntervalTypes { get; set; }
+        public virtual DbSet<QueryStrings> QueryStrings { get; set; }
         public virtual DbSet<ScheduledTasks> ScheduledTasks { get; set; }
 
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
@@ -24,7 +25,7 @@ namespace ChorebotMessageSender.Entities
             if (!optionsBuilder.IsConfigured)
             {
 #warning To protect potentially sensitive information in your connection string, you should move it out of source code. See http://go.microsoft.com/fwlink/?LinkId=723263 for guidance on storing connection strings.
-                optionsBuilder.UseSqlServer("Server=RYAN-PC\\SQLEXPRESS;Database=ChorebotScheduler;Trusted_Connection=True;MultipleActiveResultSets=true;");
+                optionsBuilder.UseSqlServer("Server=RYAN-PC\\SQLEXPRESS;Database=ChorebotScheduler;Trusted_Connection=True;MultipleActiveResultSets=True;");
             }
         }
 
