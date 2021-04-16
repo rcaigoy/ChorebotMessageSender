@@ -40,6 +40,7 @@ namespace ChorebotMessageSender
 
             //run once at beginning of start
             SetSchedule(null, null);
+
             //make scheduler
             //schedule every 30 minutes
             //this.ScheduleTimer = new Timer(SetSchedule, null, 0, (int)ScheduleInterval.TotalMilliseconds/2);
@@ -52,7 +53,7 @@ namespace ChorebotMessageSender
             SenderInterval = new TimeSpan(0, 1, 0);
 
             //wait one minute before processing calls after schedule initially starts
-            Thread.Sleep((int)SenderInterval.TotalMilliseconds);
+            //Thread.Sleep((int)SenderInterval.TotalMilliseconds);
 
             //send once at beginning
             SendCalls(null, null);
@@ -71,82 +72,7 @@ namespace ChorebotMessageSender
             using (var db = new ChorebotSchedulerContext())
             {
                 Console.WriteLine("Set Schedule " + DateTime.Now);
-                var ActiveList = db.Calls.Where(x => x.IsActive && x.DateStart < DateTime.Now).ToList();
-
-                ////minute and hour interval type case
-                //foreach (var call in ActiveList.Where(x => x.IntervalTypeId <= 2))
-                //{
-                //    //check if active call exists for after right now already
-                //    if (db.ScheduledTasks.Count(x => x.CallId == call.CallId && x.DateScheduled > DateTime.Now) == 0)
-                //    {
-                //        DateTime TempDateTime = DateTime.Now;
-
-                //        //check if now's time is after datestart time
-                //        if (DateTime.Now.TimeOfDay > call.DateStart.TimeOfDay)
-                //        {
-                //            TempDateTime = new DateTime(DateTime.Today.Year, DateTime.Today.Month, DateTime.Today.Day, call.DateStart.Hour, call.DateStart.Minute, 0);
-
-                //        } //end if if (DateTime.Now.TimeOfDay > call.DateStart.TimeOfDay)
-
-                //        else
-                //        {
-                //            TempDateTime = new DateTime(DateTime.Today.Year, DateTime.Today.Month, DateTime.Today.AddDays(-1).Day, call.DateStart.Hour, call.DateStart.Minute, 0);
-                //        }
-
-
-                //        //find each scheduled task for each next 30 minutes
-                //        while (TempDateTime <= DateTime.Now + ScheduleInterval)
-                //        {
-                //            if (TempDateTime > DateTime.Now)
-                //            {
-                //                ScheduledTasks TempScheduledTask = new ScheduledTasks();
-
-                //                //public int CallId { get; set; }
-                //                TempScheduledTask.CallId = call.CallId;
-
-                //                TempScheduledTask.DateScheduled = TempDateTime;
-                //                TempScheduledTask.IsSent = false;
-
-                //                while (DBInUse)
-                //                {
-                //                    Console.WriteLine("DB In Use " + DateTime.Now);
-                //                    Thread.Sleep(1000);
-                //                }
-                //                Console.WriteLine("Setting Schedule " + DateTime.Now);
-                //                DBInUse = true;
-                //                db.ScheduledTasks.Add(TempScheduledTask);
-                //                db.SaveChanges();
-                //                this.DBInUse = false;
-                //            }
-
-                //                //choose adding algorithm
-                //                if (call.IntervalTypeId == 1)
-                //                {
-                //                    TempDateTime = TempDateTime.AddMinutes(call.Interval);
-                //                }
-
-                //                if (call.IntervalTypeId == 2)
-                //                {
-                //                    TempDateTime = TempDateTime.AddHours(call.Interval);
-                //                }
-
-                //                //if (call.IntervalTypeId == 3)
-                //                //{
-                //                //    TempDateTime = TempDateTime.AddDays(call.Interval);
-                //                //}
-
-                //                //if (call.IntervalTypeId == 4)
-                //                //{
-                //                //    TempDateTime = TempDateTime.AddMonths(call.Interval);
-                //                //}
-                            
-
-                //        }// while (TempDateTime <= DateTime.Now + ScheduleInterval)
-
-                //    }//end if (db.ScheduledTasks.Count(x => x.CallId == call.Interval && x.DateScheduled > DateTime.Now) == 0)
-
-                //}
-                ////end minute or hour condition
+                var ActiveList = db.Calls.Where(x => x.IsActive && x.DateStart < DateTime.Now).OrderBy(x => x.DateStart).ToList();
 
                 //day contidion
                 foreach (var call in ActiveList)
@@ -154,13 +80,12 @@ namespace ChorebotMessageSender
                     //check if active call exists for after right now already
                     if (db.ScheduledTasks.Count(x => x.CallId == call.CallId && x.DateScheduled > DateTime.Now) == 0)
                     {
-                        
                         DateTime TempDateTime = DateTime.Now + ScheduleInterval;
                         
                         //find starting date to start looking
                         var TempDateTimeQuery = db.ScheduledTasks.OrderByDescending(x => x.DateScheduled).FirstOrDefault(x => x.CallId == call.CallId);
 
-                        if (TempDateTimeQuery == null)
+                        if (TempDateTimeQuery == null || TempDateTimeQuery.DateScheduled < call.DateStart)
                         {
                             TempDateTime = call.DateStart;
                         }
@@ -184,10 +109,10 @@ namespace ChorebotMessageSender
 
                                 while (DBInUse)
                                 {
-                                    Console.WriteLine("DB In Use " + DateTime.Now);
+                                    //Console.WriteLine("DB In Use " + DateTime.Now);
                                     Thread.Sleep(1000);
                                 }
-                                Console.WriteLine("Setting Schedule " + DateTime.Now);
+                                //Console.WriteLine("Setting Schedule " + DateTime.Now);
                                 DBInUse = true;
                                 db.ScheduledTasks.Add(TempScheduledTask);
                                 db.SaveChanges();
@@ -243,7 +168,7 @@ namespace ChorebotMessageSender
                         try
                         {
                             Calls Call = db.Calls.FirstOrDefault(x => x.CallId == ScheduledTask.CallId);
-                            SendCall(ScheduledTask);
+                            await SendCall(ScheduledTask);
                         }
                         catch (Exception ex)
                         {
@@ -263,13 +188,15 @@ namespace ChorebotMessageSender
         }
 
 
-        private void SendCall(ScheduledTasks ScheduledTask)
+        private async Task SendCall(ScheduledTasks ScheduledTask)
         {
             try
             {
                 using (var db = new ChorebotSchedulerContext())
                 {
                     var Call = db.Calls.FirstOrDefault(x => x.CallId == ScheduledTask.CallId);
+                    if (Call == null)
+                        return;
 
                     string UrlRequest = Call.Url;
 
@@ -299,33 +226,34 @@ namespace ChorebotMessageSender
                     switch (Call.CallType)
                     {
                         case "get":
-                            Console.WriteLine("Starting:  " + Call.Url);
-                            Task.Run(async () =>
-                            {
+                            Console.WriteLine("Starting:  " + ScheduledTask.ScheduledTaskId + Call.Url);
+                            //Task.Run(async () =>
+                            //{
                             response = await client.GetAsync(UrlRequest);
                                 if (response == null)
                                 {
-                                    AlertAdmin("null response", new Exception(Call.Url));
+                                    AlertAdmin("null response", new Exception(Call.Url), ScheduledTaskId: ScheduledTask.ScheduledTaskId);
                                 }
                                 else if (response.StatusCode != HttpStatusCode.OK)
                                 {
-                                    AlertAdmin(response.StatusCode.ToString(), new Exception(response.Content.ToString()));
+                                    AlertAdmin(response.StatusCode.ToString(), new Exception(response.Content.ToString()), ScheduledTaskId: ScheduledTask.ScheduledTaskId );
                                 }
                                 else
                                 {
-                                    CompleteScheduledTask(ScheduledTask.ScheduledTaskId);
+                                    await CompleteScheduledTask(ScheduledTask.ScheduledTaskId);
                                 }
-                            }); //end Task.Run(()
+                            //}); //end Task.Run(()
 
                             break;
 
                         case "post":
                             Console.WriteLine("Starting:  " + Call.Url);
-                            Task.Run(async () =>
-                            {
+                            //Task.Run(async () =>
+                            //{
                                 response = await client.PostAsync(UrlRequest, null);
                                 if (response == null)
                                 {
+                                    
                                     AlertAdmin("null response", new Exception(Call.Url));
                                 }
                                 else if (response.StatusCode != HttpStatusCode.OK)
@@ -334,9 +262,9 @@ namespace ChorebotMessageSender
                                 }
                                 else
                                 {
-                                    CompleteScheduledTask(ScheduledTask.ScheduledTaskId);
+                                    await CompleteScheduledTask(ScheduledTask.ScheduledTaskId);
                                 }
-                            }); //end Task.Run(()
+                            //}); //end Task.Run(()
 
                             break;
 
@@ -352,7 +280,7 @@ namespace ChorebotMessageSender
         }
 
 
-        private void CompleteScheduledTask(int ScheduledTaskId)
+        private async Task<int> CompleteScheduledTask(int ScheduledTaskId)
         {
             try
             {
@@ -361,7 +289,7 @@ namespace ChorebotMessageSender
                     while (DBInUse)
                     {
                         Thread.Sleep(1000);
-                        Console.WriteLine("Db in use " + DateTime.Now);
+                        Console.WriteLine(ScheduledTaskId + ": Db in use " + DateTime.Now);
                     }
                     this.DBInUse = true;
                     var ScheduledTask = db.ScheduledTasks.FirstOrDefault(x => x.ScheduledTaskId == ScheduledTaskId);
@@ -374,13 +302,15 @@ namespace ChorebotMessageSender
                     Console.WriteLine("Completed Scheduled Task " + ScheduledTaskId + ":  " +  Call.Url);
 
                     this.DBInUse = false;
+                    return 1;
                 }
             }
             catch (Exception ex)
             {
+                this.DBInUse = false;
                 AlertAdmin("database write issue", ex);
             }
-
+            return 0;
         }
 
 
@@ -419,6 +349,8 @@ namespace ChorebotMessageSender
             }
             catch (Exception ex2)
             {
+                Console.WriteLine("Admin Alert: " + ex2.Message);
+                this.DBInUse = false;
                 //log?
             }
         }
